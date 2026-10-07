@@ -90,7 +90,7 @@ def main():
         for resto in ("settings.ini", "pasted"):
             p = carpeta / resto
             shutil.rmtree(p, ignore_errors=True) if p.is_dir() else p.unlink(missing_ok=True)
-        (carpeta / "Read me - Léeme.txt").write_text(LEEME % {"v": VERSION}, encoding="utf-8")
+        (carpeta / "Read me - Leeme.txt").write_text(LEEME % {"v": VERSION}, encoding="utf-8")
         zip_ = Path("dist/DriloReview-%s-portable-win64.zip" % VERSION)
         zip_.unlink(missing_ok=True)
         with zipfile.ZipFile(zip_, "w", zipfile.ZIP_DEFLATED) as z:
