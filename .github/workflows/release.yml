@@ -1,0 +1,90 @@
+# Builds DriloReview on Windows and macOS, runs the tests on both, and, for a
+# v* tag, publishes a release with the two portable zips.
+#   git tag v1.1.0 && git push origin v1.1.0
+name: Build and release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Python (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # the python.org build is universal2: one app for Intel and Apple Silicon
+      - name: Python universal2 (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          curl -sSLo python.pkg https://www.python.org/ftp/python/3.12.10/python-3.12.10-macos11.pkg
+          sudo installer -pkg python.pkg -target /
+          echo "/Library/Frameworks/Python.framework/Versions/3.12/bin" >> "$GITHUB_PATH"
+
+      - name: Environment
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            python -m venv .venv; PY=.venv/Scripts/python.exe
+          else
+            python3.12 -m venv .venv; PY=.venv/bin/python
+          fi
+          echo "PY=$PY" >> "$GITHUB_ENV"
+          "$PY" -m pip install --upgrade pip
+          "$PY" -m pip install PySide6-Essentials pyinstaller
+
+      - name: Tests
+        shell: bash
+        run: '"$PY" tests/test_driloreview.py'
+
+      - name: Build
+        shell: bash
+        env:
+          DRILOREVIEW_ARCH: ${{ runner.os == 'macOS' && 'universal2' || '' }}
+        run: '"$PY" build.py'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DriloReview-${{ runner.os }}
+          path: dist/*.zip
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          cat > notes.md <<NOTES
+          **DriloReview $V** — drag images in, draw on them, export them all as one PDF. By Drilo.
+
+          - **Windows**: \`DriloReview-$V-portable-win64.zip\` → unzip anywhere → run \`DriloReview.exe\`. Nothing is installed. The first time: *More info* → *Run anyway* (the executable is not signed).
+          - **macOS 13+** (Intel and Apple Silicon): \`DriloReview-$V-macos.zip\` → unzip → open \`DriloReview.app\`. The first time: right-click → *Open* (the app is not notarised).
+
+          Built and tested by GitHub Actions on Windows and macOS.
+          NOTES
+          gh release create "$GITHUB_REF_NAME" dist/*.zip --repo "$GITHUB_REPOSITORY" \
+            --title "DriloReview $V" --notes-file notes.md

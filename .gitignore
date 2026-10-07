@@ -1,0 +1,9 @@
+.venv/
+build/
+dist/
+__pycache__/
+*.pyc
+*.zip
+*.driloreview
+tests/_tmp/
+.DS_Store
