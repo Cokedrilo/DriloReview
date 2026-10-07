@@ -344,7 +344,83 @@ for sc in win.findChildren(QShortcut):
 repetidos = sorted({k for k in atajos if atajos.count(k) > 1})
 check(not repetidos, "atajos repetidos: %s" % repetidos)
 
-# 12. el tema se cambia sin errores
+# 12. opacidad de las capas
+win.load_project(str(proyecto))
+win.list.setCurrentRow(1)
+win.set_tool(None)
+p = win.page(win.current)
+linea = [f for f in p["draw"] if f["tipo"] == "linea"][0]
+win.select_shape(linea["id"])
+check(win.sld_opacity.isEnabled() and win.sld_opacity.value() == 100,
+      "con una capa seleccionada, el deslizador deberia estar a 100")
+pasos = len(win.undo_stack)
+sld = win.sld_opacity
+sld.setSliderDown(True)                        # arrastrar: se ve al momento...
+for v in (80, 60, 40, 30):
+    sld.setValue(v)
+check(win.selected_shape().get("opacidad") == 30, "arrastrando deberia cambiar la opacidad")
+check(len(win.undo_stack) == pasos, "mientras se arrastra no deberia apilar deshacer")
+sld.setSliderDown(False)                       # ...y al soltar, un solo paso
+check(len(win.undo_stack) == pasos + 1, "un arrastre de opacidad deberia ser un paso")
+fila = [win.layers.item(i).text() for i in range(win.layers.count())
+        if win.layers.item(i).data(dn.SHAPE_ROLE) == linea["id"]]
+check(fila and fila[0].endswith("30 %"), "la capa deberia mostrar su opacidad: %s" % fila)
+img = QImage(200, 200, QImage.Format.Format_ARGB32)
+for op, esperado in ((100, 255), (30, 77)):
+    img.fill(QColor(0, 0, 0, 0))
+    pt = QPainter(img)
+    dn.paint_shape(pt, {"tipo": "linea", "puntos": [[0, 100], [200, 100]],
+                        "color": "#e81123", "grosor": 20, "alpha": 255, "opacidad": op})
+    pt.end()
+    a_ = img.pixelColor(100, 100).alpha()
+    check(abs(a_ - esperado) <= 2, "opacidad %d: alfa %d, esperaba %d" % (op, a_, esperado))
+# el rotulador ya es transparente: la opacidad lo multiplica
+f = {"tipo": "rotulador", "puntos": [[0, 100], [200, 100]], "color": "#fcd116",
+     "grosor": 20, "alpha": 90, "opacidad": 50}
+img.fill(QColor(0, 0, 0, 0))
+pt = QPainter(img)
+dn.paint_shape(pt, f)
+pt.end()
+check(abs(img.pixelColor(100, 100).alpha() - 45) <= 2, "rotulador al 50 %%: alfa %d"
+      % img.pixelColor(100, 100).alpha())
+win.undo()
+check("opacidad" not in win.selected_shape(), "deshacer deberia devolverla al 100 %")
+check(win.sld_opacity.value() == 100, "el deslizador deberia seguir al deshacer")
+sld.setValue(50)                               # teclado o clic: un paso directo
+check(win.selected_shape().get("opacidad") == 50 and len(win.undo_stack) == pasos + 1,
+      "cambiar la opacidad sin arrastrar deberia ser un paso")
+win.project_path = str(TMP / "opacidad.driloreview")
+win.save_project()
+win.load_project(win.project_path)
+check(any(f.get("opacidad") == 50 for p in win.pages for f in p["draw"]),
+      "la opacidad deberia guardarse en el proyecto")
+win.select_shape(None)
+check(not win.sld_opacity.isEnabled(), "sin seleccion, el deslizador deberia apagarse")
+
+# 13. escala de la interfaz
+base_pt = QApplication.font().pointSizeF()
+icono_base = win.tool_buttons["trazo"].iconSize().width()
+mini_base = win.list.iconSize().width()
+win.set_interface_scale(1.5)
+check(abs(QApplication.font().pointSizeF() - base_pt * 1.5) < 0.01,
+      "la letra deberia crecer al 150 %%: %s" % QApplication.font().pointSizeF())
+check(win.tool_buttons["trazo"].iconSize().width() == round(icono_base * 1.5),
+      "los iconos deberian crecer: %d" % win.tool_buttons["trazo"].iconSize().width())
+check(win.list.iconSize().width() == round(mini_base * 1.5), "las miniaturas deberian crecer")
+check("33px" in QApplication.instance().styleSheet(), "la hoja de estilo deberia escalarse")
+pm = win.tool_buttons["trazo"].icon().pixmap(win.tool_buttons["trazo"].iconSize())
+check(pm.width() >= round(icono_base * 1.5), "el icono deberia dibujarse al tamano nuevo")
+check(win.sld_ui.value() == 150 and win.b_ui_val.text() == "150 %", "el control deberia decir 150 %")
+check(float(win.ajustes.value("ui/scale")) == 1.5, "la escala deberia guardarse")
+win.sld_ui.setValue(80)                        # con el deslizador (sin arrastrar)
+check(dn.UI_SCALE == 0.8, "el deslizador deberia aplicar 80 %%: %s" % dn.UI_SCALE)
+win.set_interface_scale(9)
+check(dn.UI_SCALE == dn.UI_SCALE_MAX, "la escala deberia tener tope")
+win.set_interface_scale(1.0)
+check(abs(QApplication.font().pointSizeF() - base_pt) < 0.01, "volver al 100 %")
+check(win.tool_buttons["trazo"].iconSize().width() == icono_base, "los iconos deberian volver")
+
+# 14. el tema se cambia sin errores
 win.toggle_theme()
 win.toggle_theme()
 

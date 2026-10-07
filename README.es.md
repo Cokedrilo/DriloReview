@@ -18,7 +18,7 @@ amplíes.
 Las dos versiones se descargan de la página de
 [*Releases*](https://github.com/Cokedrilo/DriloReview/releases/latest).
 
-**Windows.** `DriloReview-1.2.0-windows.exe` es **un solo archivo**: sin zip y
+**Windows.** `DriloReview-1.3.0-windows.exe` es **un solo archivo**: sin zip y
 sin instalar nada. Se descarga y se abre con doble clic; tarda unos segundos
 en arrancar porque se desempaqueta cada vez. Puede ir en un USB y no escribe
 en el registro; los ajustes y las imágenes pegadas van a
@@ -26,7 +26,7 @@ en el registro; los ajustes y las imágenes pegadas van a
 es desconocido: *Más información* → *Ejecutar de todas formas*. Puedes
 arrastrar imágenes sobre el `.exe` para abrirlas.
 
-**Mac.** Abre `DriloReview-1.2.0-macos.dmg` y arrastra DriloReview a
+**Mac.** Abre `DriloReview-1.3.0-macos.dmg` y arrastra DriloReview a
 Aplicaciones (una sola app para Intel y Apple Silicon, macOS 13 o posterior). La primera vez macOS avisa de que no está
 notarizada: clic derecho → *Abrir*, o en Terminal
 `xattr -dr com.apple.quarantine /ruta/a/DriloReview.app`. Puedes soltar
@@ -76,6 +76,11 @@ En Mac los atajos con `Ctrl` son con `⌘`.
      con `Ctrl+Mayús+]` / `[` van al frente o al fondo del todo.
    - **El ojo** oculta o muestra la capa (`Ctrl+Mayús+H`). Las ocultas no salen
      en la miniatura **ni en el PDF**, pero no se pierden.
+   - **Opacity**, debajo de la lista, hace transparente la capa seleccionada,
+     de 0 a 100 %. Se ve al momento, sale igual en el PDF y la capa lo indica
+     junto a su nombre («Rectangle · 45 %»). Todo un arrastre del deslizador es
+     un solo paso de deshacer. En el rotulador se suma a su transparencia
+     propia.
    - La papelera, `Supr` o doble clic (en un texto, para editarlo).
 5. **Exportar PDF** (`Ctrl+E`):
    - *Page size*: con la forma de cada imagen (sin bordes), o A4 / Carta
@@ -87,8 +92,17 @@ En Mac los atajos con `Ctrl` son con `⌘`.
    - Si cancelas a medias, o el PDF anterior está abierto en un visor y no se
      puede sustituir, no queda ningún PDF roto.
 
+**Tamaño de la interfaz.** El deslizador *Interface* de abajo a la derecha
+agranda o encoge toda la ventana —textos, iconos, botones, miniaturas y
+capas— del 70 % al 200 %, al momento y sin reiniciar. También en el menú
+*View*: `Ctrl+Alt+=` más grande, `Ctrl+Alt+-` más pequeña y `Ctrl+Alt+0`
+vuelve al 100 % (o un clic en el porcentaje). Se recuerda al cerrar. Si la
+ventana es estrecha, la barra de herramientas pasa a dos o tres líneas en vez
+de salirse de la pantalla. Al lado está el botón de tema claro / oscuro.
+
 `Ctrl+Z` deshace y `Ctrl+Mayús+Z` (o `Ctrl+Y` en Windows) rehace **todo**:
-trazos, movimientos, colores, capas, añadir, quitar y reordenar páginas.
+trazos, movimientos, colores, opacidad, capas, añadir, quitar y reordenar
+páginas.
 
 ## Proyectos
 
@@ -139,7 +153,7 @@ Windows.
 `README.md`), y luego
 
 ```
-git tag v1.2.0 && git push origin main v1.2.0
+git tag v1.3.0 && git push origin main v1.3.0
 ```
 
 GitHub Actions (`.github/workflows/release.yml`) construye en Windows y en Mac,

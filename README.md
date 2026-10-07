@@ -1,7 +1,7 @@
 # DriloReview
 
-[![Download](https://img.shields.io/badge/Download-Windows%20.exe-2ea44f?style=for-the-badge&logo=windows)](https://github.com/Cokedrilo/DriloReview/releases/latest/download/DriloReview-1.2.0-windows.exe)
-[![Download](https://img.shields.io/badge/Download-macOS%20.dmg-2ea44f?style=for-the-badge&logo=apple)](https://github.com/Cokedrilo/DriloReview/releases/latest/download/DriloReview-1.2.0-macos.dmg)
+[![Download](https://img.shields.io/badge/Download-Windows%20.exe-2ea44f?style=for-the-badge&logo=windows)](https://github.com/Cokedrilo/DriloReview/releases/latest/download/DriloReview-1.3.0-windows.exe)
+[![Download](https://img.shields.io/badge/Download-macOS%20.dmg-2ea44f?style=for-the-badge&logo=apple)](https://github.com/Cokedrilo/DriloReview/releases/latest/download/DriloReview-1.3.0-macos.dmg)
 [![Release](https://img.shields.io/github/v/release/Cokedrilo/DriloReview)](https://github.com/Cokedrilo/DriloReview/releases/latest)
 [![Licence](https://img.shields.io/github/license/Cokedrilo/DriloReview)](LICENSE)
 
@@ -14,14 +14,14 @@ the drawings as sharp vectors. Your image files are never modified.
 
 ### ⬇ Try it in one minute
 
-**[Download for Windows](https://github.com/Cokedrilo/DriloReview/releases/latest/download/DriloReview-1.2.0-windows.exe)**
+**[Download for Windows](https://github.com/Cokedrilo/DriloReview/releases/latest/download/DriloReview-1.3.0-windows.exe)**
 — one single `.exe`: no zip, nothing to install. Download it and double-click
 (it takes a few seconds to start, as it unpacks itself). It also runs from a
 USB stick, and writes nothing to the registry. Windows will warn about an
 unknown publisher the first time (the executable is not signed): *More info* →
 *Run anyway*.
 
-**[Download for Mac](https://github.com/Cokedrilo/DriloReview/releases/latest/download/DriloReview-1.2.0-macos.dmg)**
+**[Download for Mac](https://github.com/Cokedrilo/DriloReview/releases/latest/download/DriloReview-1.3.0-macos.dmg)**
 — open the `.dmg` and drag DriloReview to Applications (or anywhere). One app
 for Intel and Apple Silicon, macOS 13 or later. The app is not notarised, so
 the first time macOS refuses to open it: right-click → *Open*, or run once in
@@ -47,7 +47,11 @@ the right. The images are generated samples.</sub>
   drag it. Click a colour to recolour it, double-click a text to edit it,
   copy, paste and duplicate drawings.
 - **Layers**: every drawing is a layer; the top of the list is in front. Drag
-  to reorder, click the eye to hide (hidden layers are left out of the PDF).
+  to reorder, click the eye to hide (hidden layers are left out of the PDF),
+  and set each layer's **opacity** — it shows in the PDF too.
+- **Interface size**: make the whole window larger or smaller, 70 % to 200 %,
+  live (bottom right, or the View menu). The toolbar wraps instead of running
+  off a small screen.
 - **Export PDF**: one page per image, shaped like each image or on A4 / Letter
   turned to suit, with optional margins, page numbers and file names, and a
   choice of image resolution to keep the file small.

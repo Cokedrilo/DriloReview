@@ -16,15 +16,16 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 import shutil
 import sys
 import time
 import uuid
 from pathlib import Path
 
-from PySide6.QtCore import (QByteArray, QEvent, QMarginsF, QMimeData, QObject, QPointF, QRectF,
-                            QRunnable, QSettings, QSize, QSizeF, Qt, QThreadPool, QTimer,
-                            Signal, Slot)
+from PySide6.QtCore import (QByteArray, QEvent, QMarginsF, QMimeData, QObject, QPoint, QPointF,
+                            QRect, QRectF, QRunnable, QSettings, QSize, QSizeF, Qt,
+                            QThreadPool, QTimer, Signal, Slot)
 from PySide6.QtGui import (QAction, QColor, QFont, QFontMetricsF, QIcon, QImage,
                            QImageIOHandler, QImageReader,
                            QKeySequence, QPageLayout, QPageSize, QPainter, QPainterPath,
@@ -34,7 +35,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QApplication, QButtonGroup, QC
                                QColorDialog, QComboBox, QDialog, QDialogButtonBox,
                                QFileDialog, QFormLayout, QGraphicsItem, QGraphicsPathItem,
                                QGraphicsPixmapItem, QGraphicsScene, QGraphicsView,
-                               QHBoxLayout, QInputDialog, QLabel, QListWidget,
+                               QHBoxLayout, QInputDialog, QLabel, QLayout, QListWidget,
                                QListWidgetItem, QMainWindow, QMenu, QMessageBox,
                                QProgressDialog, QPushButton, QSlider, QSplitter,
                                QStackedWidget, QStyledItemDelegate, QStyleOptionViewItem,
@@ -42,7 +43,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QApplication, QButtonGroup, QC
 
 APP_NAME = "DriloReview"
 APP_AUTHOR = "Drilo"
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 PROJECT_EXT = ".driloreview"
 PROJECT_EXTS = (PROJECT_EXT, ".drilonalisis")   # tambien los de cuando se llamaba DriloNalisis
 PROJECT_FILTER = "DriloReview project (%s)" % " ".join("*" + e for e in PROJECT_EXTS)
@@ -134,6 +135,35 @@ THEMES = {
 }
 _theme = "dark"
 
+# Escala de la interfaz (texto, iconos, botones, miniaturas), de 0.7 a 2
+UI_SCALE = 1.0
+UI_SCALE_MIN, UI_SCALE_MAX = 0.7, 2.0
+_BASE_FONT_PT = None                # el tamano de letra del sistema, a escala 1
+
+
+def ui(n: float) -> int:
+    """Un tamano de la interfaz, en pixeles logicos, a la escala elegida."""
+    return max(1, round(n * UI_SCALE))
+
+
+def device_ratio() -> float:
+    app = QApplication.instance()
+    return max(1.0, app.devicePixelRatio()) if app else 1.0
+
+
+def set_ui_scale(escala: float):
+    """Cambia el tamano de toda la interfaz al momento: letra y hoja de estilo.
+    Los iconos y las miniaturas los rehace la ventana (refresh_ui)."""
+    global UI_SCALE, _BASE_FONT_PT
+    app = QApplication.instance()
+    if _BASE_FONT_PT is None:
+        _BASE_FONT_PT = app.font().pointSizeF()
+    UI_SCALE = round(max(UI_SCALE_MIN, min(UI_SCALE_MAX, float(escala))), 2)
+    f = QFont(app.font())
+    f.setPointSizeF(_BASE_FONT_PT * UI_SCALE)
+    app.setFont(f)
+    app.setStyleSheet(build_qss(_theme))
+
 
 def theme_color(clave: str) -> str:
     return THEMES[_theme][clave]
@@ -168,8 +198,14 @@ def fusion_palette(nombre: str) -> QPalette:
     return pal
 
 
+def slider_metrics() -> tuple:
+    """Diametro del tirador de los deslizadores y grosor del surco, pares.
+    El deslizador tiene que medir al menos el diametro, o se corta."""
+    return 2 * max(6, round(8 * UI_SCALE)), 2 * max(2, round(2 * UI_SCALE))
+
+
 def build_qss(nombre: str) -> str:
-    return """
+    qss = """
 QToolTip { background:%(raised)s; color:%(text)s; border:1px solid %(border)s;
            padding:4px 6px; border-radius:4px; }
 QStatusBar { color:%(dim)s; }
@@ -201,11 +237,6 @@ QToolButton:checked { background:%(accent_soft)s; border:1px solid %(accent)s; }
 QToolButton:disabled { color:%(dim)s; }
 
 QCheckBox { spacing:8px; color:%(text)s; }
-QSlider::groove:horizontal { height:4px; background:%(border)s; border-radius:2px; }
-QSlider::sub-page:horizontal { background:%(accent)s; border-radius:2px; }
-QSlider::handle:horizontal { background:%(raised)s; border:2px solid %(accent)s;
-              width:12px; height:12px; margin:-7px 0; border-radius:8px; }
-QSlider::handle:horizontal:hover { background:%(accent)s; }
 
 QScrollBar:vertical { background:transparent; width:12px; margin:2px; }
 QScrollBar:horizontal { background:transparent; height:12px; margin:2px; }
@@ -242,6 +273,23 @@ QLabel[role="hint"] { color:%(dim)s; font-size:13px; }
 QWidget#toolbar { background:%(panel)s; border-bottom:1px solid %(border)s; }
 QWidget#hint { background:%(canvas)s; }
 """ % THEMES[nombre]
+    # todo lo que mide mas de 2 px crece con la escala; las lineas de 1-2 px
+    # se quedan finas
+    qss = re.sub(r"(\d+(?:\.\d+)?)px",
+                 lambda m: "%dpx" % (round(float(m.group(1)) * UI_SCALE)
+                                    if float(m.group(1)) > 2 else float(m.group(1))),
+                 qss)
+    # el tirador de los deslizadores, calculado aparte: si el radio pasa de la
+    # mitad del circulo, Qt no lo dibuja
+    lado, surco = slider_metrics()
+    return qss + """
+QSlider::groove:horizontal { height:%(g)dpx; background:%(border)s; border-radius:%(gr)dpx; }
+QSlider::sub-page:horizontal { background:%(accent)s; border-radius:%(gr)dpx; }
+QSlider::handle:horizontal { background:%(raised)s; border:2px solid %(accent)s;
+              width:%(w)dpx; height:%(w)dpx; margin:-%(m)dpx 0; border-radius:%(r)dpx; }
+QSlider::handle:horizontal:hover { background:%(accent)s; }
+""" % dict(THEMES[nombre], g=surco, gr=surco // 2, w=lado - 4, m=(lado - surco) // 2,
+           r=lado // 2)
 
 
 def apply_theme(nombre: str):
@@ -259,11 +307,21 @@ def apply_theme(nombre: str):
 # --------------------------------------------------------------------------- #
 #  Iconos dibujados en codigo (los de DriloBoard, y alguno nuevo)
 # --------------------------------------------------------------------------- #
-def swatch_icon(color: str, size: int = 18) -> QIcon:
-    pm = QPixmap(size, size)
+def _canvas_pixmap(w: float, h: float):
+    """Un pixmap de w x h (tamano de diseno) a la escala de la interfaz y con la
+    densidad de la pantalla, y un pintor que dibuja en esas medidas de diseno."""
+    dpr = device_ratio()
+    pm = QPixmap(max(1, round(w * UI_SCALE * dpr)), max(1, round(h * UI_SCALE * dpr)))
+    pm.setDevicePixelRatio(dpr)
     pm.fill(Qt.GlobalColor.transparent)
     p = QPainter(pm)
     p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    p.scale(UI_SCALE, UI_SCALE)
+    return pm, p
+
+
+def swatch_icon(color: str, size: int = 18) -> QIcon:
+    pm, p = _canvas_pixmap(size, size)
     p.setPen(QPen(QColor(128, 128, 128), 1))
     p.setBrush(QColor(color))
     p.drawRoundedRect(1, 1, size - 3, size - 3, 3, 3)
@@ -272,10 +330,16 @@ def swatch_icon(color: str, size: int = 18) -> QIcon:
 
 
 def tool_icon(kind: str, size: int = 20) -> QIcon:
-    pm = QPixmap(size, size)
-    pm.fill(Qt.GlobalColor.transparent)
-    p = QPainter(pm)
-    p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    """Iconos dibujados en codigo, nitidos a cualquier escala y pantalla."""
+    pm, p = _canvas_pixmap(size, size)
+    paint_tool(p, kind, size)
+    p.end()
+    return QIcon(pm)
+
+
+def paint_tool(p: QPainter, kind: str, size: float = 20):
+    """Dibuja el icono en un cuadrado de size x size del pintor."""
+    p.save()
     tinta = QColor(theme_color("ink"))
     lapiz = QPen(tinta, 1.8)
     lapiz.setCapStyle(Qt.PenCapStyle.RoundCap)
@@ -408,8 +472,7 @@ def tool_icon(kind: str, size: int = 20) -> QIcon:
         mordisco.addEllipse(QRectF(m + size * 0.28, m - size * 0.12, M - m, M - m))
         p.setBrush(tinta)
         p.drawPath(luna.subtracted(mordisco))
-    p.end()
-    return QIcon(pm)
+    p.restore()
 
 
 def app_pixmap(size: int = 256) -> QPixmap:
@@ -562,9 +625,16 @@ def text_font(forma: dict) -> QFont:
     return f
 
 
+def shape_opacity(forma: dict) -> int:
+    """La opacidad de la capa, de 0 a 100 (sin la clave, 100)."""
+    return max(0, min(100, int(forma.get("opacidad", 100))))
+
+
 def paint_shape(p: QPainter, forma: dict):
     color = QColor(forma.get("color", "#e81123"))
-    color.setAlpha(int(forma.get("alpha", 255)))
+    # la opacidad de la capa multiplica la transparencia propia (la del rotulador);
+    # un trazo se pinta de una vez, asi que donde se cruza consigo mismo no oscurece
+    color.setAlpha(round(int(forma.get("alpha", 255)) * shape_opacity(forma) / 100))
     if forma.get("tipo") == "texto":
         p.setFont(text_font(forma))
         p.setPen(color)
@@ -636,15 +706,11 @@ EYE_WIDTH = 24                      # el ojo de cada capa: un clic ahi la oculta
 
 def layer_icon(forma: dict) -> QIcon:
     """El ojo (visible u oculta), la herramienta con que se hizo y su color."""
-    dpr = 2
-    pm = QPixmap((EYE_WIDTH + 38) * dpr, 20 * dpr)
-    pm.setDevicePixelRatio(dpr)
-    pm.fill(Qt.GlobalColor.transparent)
-    p = QPainter(pm)
-    p.drawPixmap(0, 0, tool_icon("eye_off" if forma.get("oculto") else "eye").pixmap(20, 20))
-    p.drawPixmap(EYE_WIDTH, 0,
-                 tool_icon(LAYER_ICONS.get(forma.get("tipo"), "pencil")).pixmap(20, 20))
-    p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    pm, p = _canvas_pixmap(EYE_WIDTH + 38, 20)
+    paint_tool(p, "eye_off" if forma.get("oculto") else "eye")
+    p.translate(EYE_WIDTH, 0)
+    paint_tool(p, LAYER_ICONS.get(forma.get("tipo"), "pencil"))
+    p.translate(-EYE_WIDTH, 0)
     p.setPen(QPen(QColor(128, 128, 128), 1))
     p.setBrush(QColor(forma.get("color", "#e81123")))
     p.drawRoundedRect(QRectF(EYE_WIDTH + 23, 4, 12, 12), 3, 3)
@@ -945,7 +1011,7 @@ class AnnotationItem(QGraphicsItem):
             caja = shape_bounds(sel)
             for color, estilo in ((QColor(0, 0, 0, 150), Qt.PenStyle.SolidLine),
                                   (QColor(theme_color("accent")), Qt.PenStyle.DashLine)):
-                pen = QPen(color, 1.5, estilo)
+                pen = QPen(color, 1.5 * UI_SCALE, estilo)
                 pen.setCosmetic(True)
                 painter.setPen(pen)
                 painter.setBrush(Qt.BrushStyle.NoBrush)
@@ -1060,8 +1126,8 @@ class Canvas(QGraphicsView):
 
     # -- herramientas ------------------------------------------------------ #
     def tolerance(self) -> float:
-        """8 pixeles de pantalla, en pixeles de imagen."""
-        return 8 / max(self.zoom(), 1e-6)
+        """8 pixeles de pantalla (a la escala de la interfaz), en pixeles de imagen."""
+        return ui(8) / max(self.zoom(), 1e-6)
 
     def set_tool(self, tool):
         self.tool = tool
@@ -1204,6 +1270,10 @@ class Canvas(QGraphicsView):
 ICON_BOX = 150                      # las miniaturas de la tira, dentro de este cuadrado
 
 
+def icon_box() -> int:
+    return ui(ICON_BOX)
+
+
 class PageDelegate(QStyledItemDelegate):
     """Miniatura arriba y nombre debajo, en una lista normal (que si reordena)."""
 
@@ -1212,11 +1282,87 @@ class PageDelegate(QStyledItemDelegate):
         option.decorationPosition = QStyleOptionViewItem.Position.Top
         option.decorationAlignment = Qt.AlignmentFlag.AlignHCenter
         option.displayAlignment = Qt.AlignmentFlag.AlignHCenter
-        option.decorationSize = QSize(ICON_BOX, ICON_BOX)
+        option.decorationSize = QSize(icon_box(), icon_box())
 
     def sizeHint(self, option, index):
         alto = option.fontMetrics.height()
-        return QSize(ICON_BOX + 16, ICON_BOX + alto + 18)
+        return QSize(icon_box() + ui(16), icon_box() + alto + ui(18))
+
+
+class FlowLayout(QLayout):
+    """Coloca los elementos en fila y salta de linea cuando no caben, como las
+    palabras de un parrafo. La barra de herramientas lo usa por grupos: asi,
+    con la interfaz grande o la ventana estrecha, nunca pide mas ancho que la
+    pantalla."""
+
+    def __init__(self, parent=None, hueco: int = 12, interlinea: int = 4):
+        super().__init__(parent)
+        self._items: list = []
+        self.hueco = hueco
+        self.interlinea = interlinea
+
+    def addItem(self, item):
+        self._items.append(item)
+
+    def count(self):
+        return len(self._items)
+
+    def itemAt(self, i):
+        return self._items[i] if 0 <= i < len(self._items) else None
+
+    def takeAt(self, i):
+        return self._items.pop(i) if 0 <= i < len(self._items) else None
+
+    def expandingDirections(self):
+        return Qt.Orientation(0)
+
+    def hasHeightForWidth(self):
+        return True
+
+    def heightForWidth(self, ancho):
+        return self._colocar(QRect(0, 0, ancho, 0), probar=True)
+
+    def setGeometry(self, rect):
+        super().setGeometry(rect)
+        self._colocar(rect, probar=False)
+
+    def sizeHint(self):
+        return self.minimumSize()
+
+    def minimumSize(self):
+        s = QSize()
+        for it in self._items:
+            s = s.expandedTo(it.minimumSize())
+        m = self.contentsMargins()
+        return s + QSize(m.left() + m.right(), m.top() + m.bottom())
+
+    def _colocar(self, rect, probar: bool) -> int:
+        m = self.contentsMargins()
+        r = rect.adjusted(m.left(), m.top(), -m.right(), -m.bottom())
+        lineas, actual, x = [], [], 0
+        for it in self._items:
+            w = it.sizeHint().width()
+            if actual and x + w > r.width():
+                lineas.append(actual)
+                actual, x = [], 0
+            actual.append(it)
+            x += w + self.hueco
+        if actual:
+            lineas.append(actual)
+        y = r.y()
+        for linea in lineas:
+            alto = max(it.sizeHint().height() for it in linea)
+            if not probar:
+                x = r.x()
+                for it in linea:
+                    h = it.sizeHint()
+                    # centrados en vertical dentro de su linea
+                    it.setGeometry(QRect(QPoint(x, y + (alto - h.height()) // 2), h))
+                    x += h.width() + self.hueco
+            y += alto + self.interlinea
+        if not lineas:
+            return m.top() + m.bottom()
+        return y - self.interlinea - rect.y() + m.bottom()
 
 
 class ArrowKeysList(QListWidget):
@@ -1242,7 +1388,7 @@ class PageList(ArrowKeysList):
         super().__init__(parent)
         self.setObjectName("pages")
         self.setItemDelegate(PageDelegate(self))
-        self.setIconSize(QSize(ICON_BOX, ICON_BOX))
+        self.rescale()
         self.setTextElideMode(Qt.TextElideMode.ElideMiddle)
         self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
@@ -1250,7 +1396,10 @@ class PageList(ArrowKeysList):
         self.setDropIndicatorShown(True)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
-        self.setMinimumWidth(ICON_BOX + 40)
+
+    def rescale(self):
+        self.setIconSize(QSize(icon_box(), icon_box()))
+        self.setMinimumWidth(icon_box() + ui(40))
 
     def dragEnterEvent(self, e):
         if e.mimeData().hasUrls():
@@ -1299,7 +1448,7 @@ class LayerList(ArrowKeysList):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("layers")
-        self.setIconSize(QSize(EYE_WIDTH + 38, 20))
+        self.rescale()
         self.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
         self.setDefaultDropAction(Qt.DropAction.MoveAction)
         self.setDropIndicatorShown(True)
@@ -1307,11 +1456,14 @@ class LayerList(ArrowKeysList):
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setAcceptDrops(True)
 
+    def rescale(self):
+        self.setIconSize(QSize(ui(EYE_WIDTH + 38), ui(20)))
+
     def mousePressEvent(self, e):
         item = self.itemAt(e.position().toPoint())
         if item is not None and e.button() == Qt.MouseButton.LeftButton:
             x = e.position().x() - self.visualItemRect(item).left()
-            if x < EYE_WIDTH + 4:               # el ojo no selecciona ni arrastra
+            if x < ui(EYE_WIDTH + 6):           # el ojo no selecciona ni arrastra
                 self.eye_clicked.emit(item.data(SHAPE_ROLE))
                 return
         super().mousePressEvent(e)
@@ -1344,7 +1496,10 @@ The eraser removes the whole drawing you click on.</p>
 <p><b>3. Move what you drew</b>: with <b>Select and move</b> (V) click a drawing and
 drag it. Double-click a text to change it; click a colour to recolour it.
 The <b>Layers</b> panel lists every drawing of the page, the top one in front:
-drag them to reorder, untick to hide (hidden layers stay out of the PDF).</p>
+drag them to reorder, click the eye to hide (hidden layers stay out of the PDF), and
+use <b>Opacity</b> below the list to make the selected one see-through.</p>
+<p><b>Interface size</b>: the <i>Interface</i> slider at the bottom right (or the
+<i>View</i> menu) makes the whole window larger or smaller, from 70 %% to 200 %%.</p>
 <p><b>4. Export PDF</b>: one page per image, in the order of the strip, with the
 drawings as sharp vectors.</p>
 <p>Your image files are never modified. <i>Save project</i> keeps the pages and the
@@ -1357,6 +1512,7 @@ next to it.</p>
 <tr><td><b>%(fwd)s · %(back)s</b></td><td>bring forward · send backward (also %(fwd2)s · %(back2)s; with Shift and [ ]: to the front / back)</td></tr>
 <tr><td><b>← → / PgUp PgDn</b></td><td>previous / next page</td></tr>
 <tr><td><b>Wheel</b></td><td>zoom &nbsp;·&nbsp; <b>0</b> fit &nbsp;·&nbsp; middle button drags</td></tr>
+<tr><td><b>%(uip)s · %(uim)s · %(ui0)s</b></td><td>larger · smaller interface · back to 100 %%</td></tr>
 <tr><td><b>%(undo)s / %(redo)s</b></td><td>undo / redo</td></tr>
 <tr><td><b>%(open)s · %(export)s</b></td><td>add images · export PDF</td></tr>
 </table>"""
@@ -1396,15 +1552,28 @@ class MainWindow(QMainWindow):
 
         barra = QWidget()
         barra.setObjectName("toolbar")
-        fila = QHBoxLayout(barra)
-        fila.setContentsMargins(10, 6, 10, 6)
-        fila.setSpacing(4)
+        flujo = FlowLayout(barra)
+        self.toolbar_layout = flujo
+        politica = barra.sizePolicy()
+        politica.setHeightForWidth(True)
+        barra.setSizePolicy(politica)
+
+        def grupo() -> QHBoxLayout:
+            """Un grupo de botones que salta de linea entero, nunca a medias."""
+            g = QWidget()
+            h = QHBoxLayout(g)
+            h.setContentsMargins(0, 0, 0, 0)
+            h.setSpacing(4)
+            flujo.addWidget(g)
+            return h
+
+        fila = grupo()                          # anadir y pegar
 
         def boton(icono, texto, tip, fn, primario=False):
             b = QPushButton("  " + texto if icono else texto)
             if icono:
                 b.setProperty("icon_name", icono)
-                b.setIcon(tool_icon(icono))
+                b.setProperty("icon_px", 16)
             b.setToolTip(tip)
             b.clicked.connect(fn)
             if primario:
@@ -1418,7 +1587,7 @@ class MainWindow(QMainWindow):
                              "or copied drawings onto this page (%s)" % keys_text("Ctrl+V"),
                              self.paste)
         fila.addWidget(self.b_paste)
-        fila.addSpacing(10)
+        fila = grupo()                          # herramientas
 
         self.grupo = QButtonGroup(self)
         self.grupo.setExclusive(True)
@@ -1426,8 +1595,6 @@ class MainWindow(QMainWindow):
         for tool, icono, nombre, atajo, tip in TOOLS:
             b = QToolButton()
             b.setProperty("icon_name", icono)
-            b.setIcon(tool_icon(icono))
-            b.setIconSize(QSize(20, 20))
             b.setCheckable(True)
             b.setAutoRaise(True)
             b.setToolTip("%s (%s) — %s" % (nombre, atajo, tip))
@@ -1438,7 +1605,7 @@ class MainWindow(QMainWindow):
             self.tool_buttons[tool] = b
             sc = QShortcut(QKeySequence(atajo), self)
             sc.activated.connect(lambda t=tool: self.set_tool(t))
-        fila.addSpacing(10)
+        fila = grupo()                          # colores y grosor
 
         self.grupo_color = QButtonGroup(self)
         self.grupo_color.setExclusive(True)
@@ -1446,8 +1613,7 @@ class MainWindow(QMainWindow):
         for nombre, hexa in DRAW_COLORS:
             b = QToolButton()
             b.setCheckable(True)
-            b.setIcon(swatch_icon(hexa))
-            b.setIconSize(QSize(18, 18))
+            b.setProperty("swatch", hexa)
             b.setToolTip(nombre)
             b.setAutoRaise(True)
             b.toggled.connect(lambda on, h=hexa: on and self.set_color(QColor(h)))
@@ -1464,39 +1630,34 @@ class MainWindow(QMainWindow):
         fila.addWidget(QLabel("Size"))
         self.sld_width = QSlider(Qt.Orientation.Horizontal)
         self.sld_width.setRange(1, 30)
-        self.sld_width.setFixedWidth(100)
         self.sld_width.setToolTip("Line thickness (it scales with the image)")
         self.sld_width.valueChanged.connect(self.set_width)
         fila.addWidget(self.sld_width)
-        fila.addSpacing(8)
+        fila = grupo()                          # deshacer, rehacer, borrar
 
         self.b_undo = QToolButton()
         self.b_undo.setProperty("icon_name", "undo")
-        self.b_undo.setIcon(tool_icon("undo"))
         self.b_undo.setAutoRaise(True)
         self.b_undo.setToolTip("Undo (%s)" % keys_text("Ctrl+Z"))
         self.b_undo.clicked.connect(self.undo)
         self.b_redo = QToolButton()
         self.b_redo.setProperty("icon_name", "redo")
-        self.b_redo.setIcon(tool_icon("redo"))
         self.b_redo.setAutoRaise(True)
         self.b_redo.setToolTip("Redo (%s)" % keys_text("Ctrl+Shift+Z"))
         self.b_redo.clicked.connect(self.redo)
         self.b_clear = QToolButton()
         self.b_clear.setProperty("icon_name", "clear")
-        self.b_clear.setIcon(tool_icon("clear"))
         self.b_clear.setAutoRaise(True)
         self.b_clear.setToolTip("Clear the drawings of this page")
         self.b_clear.clicked.connect(self.clear_drawings)
         for b in (self.b_undo, self.b_redo, self.b_clear):
             fila.addWidget(b)
-        fila.addStretch(1)
+        fila = grupo()                          # tema y exportar
 
         self.b_theme = QToolButton()
         self.b_theme.setAutoRaise(True)
         self.b_theme.setToolTip("Light / dark theme")
         self.b_theme.clicked.connect(self.toggle_theme)
-        fila.addWidget(self.b_theme)
         self.b_export = boton("pdf", "Export PDF", "Export every page as one PDF (%s)"
                               % keys_text("Ctrl+E"), self.export_dialog, primario=True)
         fila.addWidget(self.b_export)
@@ -1525,23 +1686,23 @@ class MainWindow(QMainWindow):
         hint.setObjectName("hint")
         hl = QVBoxLayout(hint)
         hl.addStretch(1)
-        icono = QLabel()
-        icono.setPixmap(app_pixmap(96))
-        icono.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        hl.addWidget(icono)
+        self.hint_icon = QLabel()
+        self.hint_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        hl.addWidget(self.hint_icon)
         t = QLabel("Drag images here")
         t.setProperty("role", "hint-title")
         t.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        t.setWordWrap(True)                     # con la interfaz grande, no ensancha
         hl.addWidget(t)
         s = QLabel("Images or whole folders. Each image becomes a page of the PDF.")
         s.setProperty("role", "hint")
         s.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        s.setWordWrap(True)
         hl.addWidget(s)
-        b = boton("add", "Add images…", "", self.add_dialog)
-        b.setFixedWidth(180)
+        self.b_hint_add = boton("add", "Add images…", "", self.add_dialog)
         fila_b = QHBoxLayout()
         fila_b.addStretch(1)
-        fila_b.addWidget(b)
+        fila_b.addWidget(self.b_hint_add)
         fila_b.addStretch(1)
         hl.addSpacing(10)
         hl.addLayout(fila_b)
@@ -1562,6 +1723,7 @@ class MainWindow(QMainWindow):
         self.split.addWidget(self.stack)
 
         der = QWidget()
+        self.panel_layers = der
         ld = QVBoxLayout(der)
         ld.setContentsMargins(0, 8, 8, 8)
         ld.setSpacing(4)
@@ -1582,6 +1744,25 @@ class MainWindow(QMainWindow):
         self.lbl_no_layers.setProperty("role", "empty")
         self.lbl_no_layers.setWordWrap(True)
         ld.addWidget(self.lbl_no_layers)
+        fila_op = QHBoxLayout()
+        fila_op.setSpacing(6)
+        self.lbl_op_title = QLabel("Opacity")
+        fila_op.addWidget(self.lbl_op_title)
+        self.sld_opacity = QSlider(Qt.Orientation.Horizontal)
+        self.sld_opacity.setRange(0, 100)
+        self.sld_opacity.setSingleStep(5)
+        self.sld_opacity.setPageStep(10)
+        self.sld_opacity.setValue(100)
+        self.sld_opacity.setToolTip("Opacity of the selected layer (it shows in the PDF too)")
+        self.sld_opacity.sliderPressed.connect(self._on_opacity_pressed)
+        self.sld_opacity.valueChanged.connect(self._on_opacity)
+        self.sld_opacity.sliderReleased.connect(self._on_opacity_released)
+        fila_op.addWidget(self.sld_opacity, 1)
+        self.lbl_opacity = QLabel("100 %")
+        self.lbl_opacity.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        fila_op.addWidget(self.lbl_opacity)
+        ld.addLayout(fila_op)
+        self._op_drag = None                    # (foto para deshacer, opacidad al pinchar)
         botones_capa = QHBoxLayout()
         botones_capa.setSpacing(2)
         self.b_raise = self._icon_button("raise", "Bring forward (%s)" % keys_text("Ctrl+]"),
@@ -1605,10 +1786,30 @@ class MainWindow(QMainWindow):
         self.lbl_zoom = QLabel("")
         self.b_fit = QToolButton()
         self.b_fit.setProperty("icon_name", "fit")
-        self.b_fit.setIcon(tool_icon("fit"))
         self.b_fit.setAutoRaise(True)
         self.b_fit.setToolTip("Fit the page in the window (0)")
         self.b_fit.clicked.connect(self.canvas.fit)
+        self.lbl_ui = QLabel("Interface")
+        self.sld_ui = QSlider(Qt.Orientation.Horizontal)
+        self.sld_ui.setRange(round(UI_SCALE_MIN * 100), round(UI_SCALE_MAX * 100))
+        self.sld_ui.setSingleStep(5)
+        self.sld_ui.setPageStep(10)
+        self.sld_ui.setValue(round(UI_SCALE * 100))
+        self.sld_ui.setToolTip("Size of the whole interface (%s / %s)"
+                               % (keys_text("Ctrl+Alt+="), keys_text("Ctrl+Alt+-")))
+        self.sld_ui.valueChanged.connect(self._on_ui_slider)
+        self.sld_ui.sliderReleased.connect(
+            lambda: self.set_interface_scale(self.sld_ui.value() / 100))
+        self.b_ui_val = QToolButton()
+        self.b_ui_val.setAutoRaise(True)
+        self.b_ui_val.setText("%d %%" % round(UI_SCALE * 100))
+        self.b_ui_val.setToolTip("Back to 100 %% (%s)" % keys_text("Ctrl+Alt+0"))
+        self.b_ui_val.clicked.connect(lambda: self.set_interface_scale(1.0))
+        for w in (self.b_theme, self.lbl_ui, self.sld_ui, self.b_ui_val):
+            self.statusBar().addPermanentWidget(w)
+        separador = QLabel("·")
+        separador.setProperty("role", "empty")
+        self.statusBar().addPermanentWidget(separador)
         self.statusBar().addPermanentWidget(self.lbl_zoom)
         self.statusBar().addPermanentWidget(self.b_fit)
 
@@ -1679,6 +1880,12 @@ class MainWindow(QMainWindow):
         ver = mb.addMenu("&View")
         accion(ver, "Fit page", self.canvas.fit)
         accion(ver, "Light / dark theme", self.toggle_theme, "Ctrl+T")
+        ver.addSeparator()
+        accion(ver, "Larger interface", lambda: self.set_interface_scale(UI_SCALE + 0.1),
+               "Ctrl+Alt+=")
+        accion(ver, "Smaller interface", lambda: self.set_interface_scale(UI_SCALE - 0.1),
+               "Ctrl+Alt+-")
+        accion(ver, "Interface at 100 %", lambda: self.set_interface_scale(1.0), "Ctrl+Alt+0")
         ayuda = mb.addMenu("&Help")
         accion(ayuda, "How it works", self.show_help, "F1")
         accion(ayuda, "About %s" % APP_NAME, self.show_about)
@@ -1686,7 +1893,6 @@ class MainWindow(QMainWindow):
     def _icon_button(self, icono: str, tip: str, fn) -> QToolButton:
         b = QToolButton()
         b.setProperty("icon_name", icono)
-        b.setIcon(tool_icon(icono))
         b.setAutoRaise(True)
         b.setToolTip(tip)
         b.clicked.connect(fn)
@@ -1697,24 +1903,67 @@ class MainWindow(QMainWindow):
         if geo is not None:
             self.restoreGeometry(geo)
         else:
-            self.resize(1300, 850)
+            self.resize(1360, 860)
         self.sld_width.setValue(int(self.ajustes.value("draw/width", 6)))
         self.set_color(QColor(self.ajustes.value("draw/color", DRAW_COLORS[0][1])))
         self.set_tool(None)
-        self._retheme()
+        self.refresh_ui()
 
     # -- tema -------------------------------------------------------------- #
     def toggle_theme(self):
         apply_theme("light" if _theme == "dark" else "dark")
         self.ajustes.setValue("theme", _theme)
-        self._retheme()
+        self.refresh_ui()
 
-    def _retheme(self):
+    # -- escala de la interfaz --------------------------------------------- #
+    def set_interface_scale(self, escala: float):
+        set_ui_scale(escala)
+        self.ajustes.setValue("ui/scale", UI_SCALE)
+        self.sld_ui.blockSignals(True)
+        self.sld_ui.setValue(round(UI_SCALE * 100))
+        self.sld_ui.blockSignals(False)
+        self.b_ui_val.setText("%d %%" % round(UI_SCALE * 100))
+        self.refresh_ui()
+
+    def _on_ui_slider(self, v: int):
+        self.b_ui_val.setText("%d %%" % v)
+        if not self.sld_ui.isSliderDown():      # teclado o clic: al momento
+            self.set_interface_scale(v / 100)   # arrastrando: al soltar
+
+    def refresh_ui(self):
+        """Rehace iconos, miniaturas y medidas con el tema y la escala actuales."""
         for w in self.findChildren(QPushButton) + self.findChildren(QToolButton):
             nombre = w.property("icon_name")
             if nombre:
-                w.setIcon(tool_icon(nombre))
+                px = w.property("icon_px") or (16 if isinstance(w, QPushButton) else 20)
+                w.setIcon(tool_icon(nombre, px))
+                w.setIconSize(QSize(ui(px), ui(px)))
+            muestra = w.property("swatch")
+            if muestra:
+                w.setIcon(swatch_icon(muestra))
+                w.setIconSize(QSize(ui(18), ui(18)))
         self.b_theme.setIcon(tool_icon("sun" if _theme == "dark" else "moon"))
+        self.b_theme.setIconSize(QSize(ui(20), ui(20)))
+        self.toolbar_layout.setContentsMargins(ui(10), ui(6), ui(10), ui(6))
+        self.toolbar_layout.hueco = ui(10)
+        self.toolbar_layout.interlinea = ui(4)
+        self.toolbar_layout.invalidate()
+        self.sld_width.setFixedWidth(ui(100))
+        for sld in self.findChildren(QSlider):  # el tirador, entero y sin cortes
+            sld.setMinimumHeight(slider_metrics()[0] + 2)
+        self.sld_ui.setFixedWidth(ui(110))
+        self.b_ui_val.setMinimumWidth(ui(46))
+        self.lbl_opacity.setMinimumWidth(ui(40))
+        dpr = device_ratio()
+        logo = app_pixmap(round(ui(96) * dpr))
+        logo.setDevicePixelRatio(dpr)
+        self.hint_icon.setPixmap(logo)
+        self.b_hint_add.setFixedWidth(ui(180))
+        self.list.rescale()
+        self.layers.rescale()
+        self.panel_layers.setMinimumWidth(ui(200))
+        self._rebuild_list(select=self.current)
+        self._rebuild_layers()
         self.canvas.viewport().update()
         for w in self.findChildren(QPushButton):  # el QSS de "primary" se reaplica
             w.style().unpolish(w)
@@ -1736,6 +1985,7 @@ class MainWindow(QMainWindow):
         b = self.color_buttons.get(c.name().lower())
         if b is not None:
             b.setChecked(True)
+            self.b_color.setProperty("swatch", None)
             self.b_color.setIcon(QIcon())
             self.b_color.setText("…")
         else:                                   # un color de fuera de la paleta
@@ -1744,7 +1994,9 @@ class MainWindow(QMainWindow):
                 otro.setChecked(False)
             self.grupo_color.setExclusive(True)
             self.b_color.setText("")
+            self.b_color.setProperty("swatch", c.name())
             self.b_color.setIcon(swatch_icon(c.name()))
+            self.b_color.setIconSize(QSize(ui(18), ui(18)))
         if self.canvas.tool in (None, "goma"):  # elegir color es querer pintar
             self.set_tool("trazo")
 
@@ -1840,7 +2092,7 @@ class MainWindow(QMainWindow):
         base = self.thumbs.get(p["path"])
         if base is None:
             self._request_thumb(p["path"])
-            pm = QPixmap(ICON_BOX, ICON_BOX * 2 // 3)
+            pm = QPixmap(icon_box(), icon_box() * 2 // 3)
             pm.fill(QColor(theme_color("raised")))
             item.setIcon(QIcon(pm))
             return
@@ -1853,7 +2105,7 @@ class MainWindow(QMainWindow):
             pt.end()
         # centrada en un cuadrado fijo: todas las paginas ocupan lo mismo
         dpr = max(1.0, self.list.devicePixelRatioF())
-        lado = round(ICON_BOX * dpr)
+        lado = round(icon_box() * dpr)
         img = img.scaled(lado, lado, Qt.AspectRatioMode.KeepAspectRatio,
                          Qt.TransformationMode.SmoothTransformation)
         pm = QPixmap(lado, lado)
@@ -1929,7 +2181,8 @@ class MainWindow(QMainWindow):
             self.canvas.refresh_notes(p["draw"])
         i = self.pages.index(p)
         self.statusBar().showMessage("Page %d of %d  ·  %s  ·  %d × %d px"
-                                     % (i + 1, len(self.pages), p["path"], *p["size"]))
+                                     % (i + 1, len(self.pages), os.path.basename(p["path"]),
+                                        *p["size"]))
         self._update_state()
 
     def step(self, delta: int):
@@ -2067,7 +2320,60 @@ class MainWindow(QMainWindow):
                 self.layers.scrollToItem(it)
                 break
         self.layers.blockSignals(False)
+        self._sync_opacity()
         self._update_state()
+
+    def _sync_opacity(self):
+        f = self.selected_shape()
+        op = shape_opacity(f) if f else 100
+        self.sld_opacity.blockSignals(True)
+        self.sld_opacity.setValue(op)
+        self.sld_opacity.blockSignals(False)
+        self.lbl_opacity.setText("%d %%" % op)
+
+    def _on_opacity_pressed(self):
+        f = self.selected_shape()
+        self._op_drag = (self._snapshot(), shape_opacity(f)) if f else None
+
+    def _set_shape_opacity(self, v: int):
+        """Cambia la opacidad en su sitio (copia nueva del dibujo) y repinta."""
+        p = self.page(self.current)
+        i = self._shape_index(p, self.sel)
+        if i is None:
+            return False
+        f = p["draw"][i]
+        nueva = ({k: x for k, x in f.items() if k != "opacidad"} if v >= 100
+                 else dict(f, opacidad=int(v)))
+        p["draw"][i] = nueva
+        self.canvas.refresh_notes(p["draw"])
+        return True
+
+    def _on_opacity(self, v: int):
+        self.lbl_opacity.setText("%d %%" % v)
+        f = self.selected_shape()
+        if f is None or shape_opacity(f) == v:
+            return
+        if self.sld_opacity.isSliderDown():
+            self._set_shape_opacity(v)          # arrastrando: se ve al momento
+            return
+        foto = self._snapshot()                 # teclado, rueda o clic: un paso
+        if self._set_shape_opacity(v):
+            self.undo_stack.append(foto)
+            del self.undo_stack[:-UNDO_LIMIT]
+            self.redo_stack.clear()
+            self._after_draw(self.page(self.current))
+
+    def _on_opacity_released(self):
+        if self._op_drag is None:
+            return
+        foto, antes = self._op_drag
+        self._op_drag = None
+        f = self.selected_shape()
+        if f is not None and shape_opacity(f) != antes:
+            self.undo_stack.append(foto)        # todo el arrastre, un solo paso
+            del self.undo_stack[:-UNDO_LIMIT]
+            self.redo_stack.clear()
+            self._after_draw(self.page(self.current))
 
     def _rebuild_layers(self):
         p = self.page(self.current)
@@ -2075,7 +2381,9 @@ class MainWindow(QMainWindow):
         self.layers.blockSignals(True)
         self.layers.clear()
         for f in reversed(formas):                     # arriba de la lista = encima
-            it = QListWidgetItem(layer_icon(f), shape_label(f))
+            op = shape_opacity(f)
+            it = QListWidgetItem(layer_icon(f), shape_label(f)
+                                 + ("  ·  %d %%" % op if op < 100 else ""))
             it.setData(SHAPE_ROLE, f.get("id"))
             it.setFlags(it.flags() & ~Qt.ItemFlag.ItemIsDropEnabled)
             it.setToolTip("Click the eye to %s it%s" % (
@@ -2090,6 +2398,7 @@ class MainWindow(QMainWindow):
         self.layers.blockSignals(False)
         self.layers.setVisible(bool(formas))
         self.lbl_no_layers.setVisible(p is not None and not formas)
+        self._sync_opacity()
 
     def _pick(self, punto: QPointF, tolerancia: float) -> bool:
         """Con la flecha: pincha el dibujo de encima y lo prepara para moverlo."""
@@ -2343,7 +2652,8 @@ class MainWindow(QMainWindow):
             self.act_redo.setEnabled(bool(self.redo_stack))
         self.b_clear.setEnabled(bool(p and p["draw"]))
         hay_sel = self._shape_index(p, self.sel) is not None
-        for b in (self.b_raise, self.b_lower, self.b_del_layer):
+        for b in (self.b_raise, self.b_lower, self.b_del_layer, self.sld_opacity,
+                  self.lbl_op_title, self.lbl_opacity):
             b.setEnabled(hay_sel)
         self.lbl_pages.setText("PAGES  (%d)" % len(self.pages) if hay else "PAGES")
         nombre = Path(self.project_path).stem if self.project_path else "Untitled"
@@ -2565,7 +2875,8 @@ class MainWindow(QMainWindow):
             "copy": keys_text("Ctrl+C"), "paste": keys_text("Ctrl+V"),
             "dup": keys_text("Ctrl+D"), "fwd": keys_text("Ctrl+]"),
             "back": keys_text("Ctrl+["), "fwd2": keys_text("Ctrl+Shift+↑"),
-            "back2": keys_text("Ctrl+Shift+↓")})
+            "back2": keys_text("Ctrl+Shift+↓"), "uip": keys_text("Ctrl+Alt+="),
+            "uim": keys_text("Ctrl+Alt+-"), "ui0": keys_text("Ctrl+Alt+0")})
 
     def show_about(self):
         QMessageBox.about(self, "About %s" % APP_NAME,
@@ -2657,6 +2968,10 @@ def main():
     app.setWindowIcon(app_icon())
     ajustes = app_settings()
     apply_theme(ajustes.value("theme") or system_theme())
+    try:
+        set_ui_scale(float(ajustes.value("ui/scale", 1.0)))
+    except (TypeError, ValueError):
+        pass
     if "--selftest" in sys.argv:
         sys.exit(selftest())
     win = MainWindow()
