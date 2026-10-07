@@ -5,9 +5,10 @@
 (esos dos crean el entorno .venv con PySide6 y PyInstaller y llaman a este).
 
 Genera el icono, empaqueta con DriloReview.spec, firma en macOS, arranca la
-app empaquetada con --selftest (sin ventanas) y deja el zip en dist/:
-    Windows:  dist/DriloReview-<version>-portable-win64.zip
-    macOS:    dist/DriloReview-<version>-macos.zip
+app empaquetada con --selftest (sin ventanas) y deja en dist/ un solo archivo
+que se abre con doble clic, sin descomprimir nada:
+    Windows:  dist/DriloReview-<version>-windows.exe
+    macOS:    dist/DriloReview-<version>-macos.dmg
 """
 import os
 import platform
@@ -16,7 +17,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import zipfile
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent
@@ -53,8 +53,11 @@ def main():
         VERSION, "macOS" if MAC else "Windows",
         os.environ.get("DRILOREVIEW_ARCH") or platform.machine()), flush=True)
 
-    for viejo in ("build/DriloReview", "dist/DriloReview", "dist/DriloReview.app"):
+    for viejo in ("build/DriloReview", "dist/DriloReview", "dist/DriloReview.app", "dist/dmg"):
         shutil.rmtree(viejo, ignore_errors=True)
+    for viejo in Path("dist").glob("DriloReview*.*"):
+        if viejo.is_file():
+            viejo.unlink()
     icono = Path("build") / ("DriloReview.icns" if MAC else "DriloReview.ico")
     if icono.exists():
         icono.unlink()
@@ -68,8 +71,7 @@ def main():
         run("codesign", "--verify", "--deep", "--strict", app)
         exe = app / "Contents/MacOS/DriloReview"
     else:
-        carpeta = Path("dist/DriloReview")
-        exe = carpeta / "DriloReview.exe"
+        exe = Path("dist/DriloReview.exe")
 
     # que el paquete arranque entero antes de darlo por bueno; lo que falte de
     # Qt se veria aqui y no desde el codigo fuente
@@ -81,44 +83,20 @@ def main():
         sys.exit("== el selftest ha fallado (codigo %d)" % r.returncode)
 
     if MAC:
-        zip_ = Path("dist/DriloReview-%s-macos.zip" % VERSION)
-        zip_.unlink(missing_ok=True)
-        # ditto conserva los enlaces simbolicos de los frameworks y la firma; zip no
-        run("ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", app, zip_)
+        # el .dmg de siempre: al abrirlo sale la app y un acceso a Aplicaciones
+        salida = Path("dist/DriloReview-%s-macos.dmg" % VERSION)
+        carpeta = Path("dist/dmg")
+        carpeta.mkdir()
+        run("ditto", app, carpeta / "DriloReview.app")
+        (carpeta / "Applications").symlink_to("/Applications")
+        run("hdiutil", "create", "-volname", "DriloReview", "-srcfolder", carpeta,
+            "-ov", "-format", "UDZO", salida)
+        shutil.rmtree(carpeta)
     else:
-        # restos que no se reparten: ajustes o pegadas de alguna ejecucion de prueba
-        for resto in ("settings.ini", "pasted"):
-            p = carpeta / resto
-            shutil.rmtree(p, ignore_errors=True) if p.is_dir() else p.unlink(missing_ok=True)
-        (carpeta / "Read me - Leeme.txt").write_text(LEEME % {"v": VERSION}, encoding="utf-8")
-        zip_ = Path("dist/DriloReview-%s-portable-win64.zip" % VERSION)
-        zip_.unlink(missing_ok=True)
-        with zipfile.ZipFile(zip_, "w", zipfile.ZIP_DEFLATED) as z:
-            for f in sorted(carpeta.rglob("*")):
-                z.write(f, Path("DriloReview") / f.relative_to(carpeta))
-    print("== listo: %s (%.0f MB)" % (zip_, zip_.stat().st_size / 1e6), flush=True)
+        salida = Path("dist/DriloReview-%s-windows.exe" % VERSION)
+        shutil.copy2(exe, salida)
+    print("== listo: %s (%.0f MB)" % (salida, salida.stat().st_size / 1e6), flush=True)
 
-
-LEEME = """DriloReview %(v)s for Windows (portable) - by Drilo
-=========================================================
-
-Unzip this folder anywhere (a USB stick too) and run DriloReview.exe. Nothing is
-installed. Settings and pasted images are kept in this same folder.
-
-The first time, Windows may warn that the publisher is unknown (the program is not
-signed): click "More info" and then "Run anyway".
-
-------------------------------------------------------------------------------
-
-DriloReview %(v)s para Windows (portable) - de Drilo
-
-Descomprime esta carpeta donde quieras (tambien en un USB) y ejecuta
-DriloReview.exe. No se instala nada. Los ajustes y las imagenes pegadas se
-guardan en esta misma carpeta.
-
-La primera vez Windows puede avisar de que el editor es desconocido (el programa
-no esta firmado): pulsa "Mas informacion" y luego "Ejecutar de todas formas".
-"""
 
 if __name__ == "__main__":
     main()

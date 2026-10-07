@@ -42,7 +42,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QApplication, QButtonGroup, QC
 
 APP_NAME = "DriloReview"
 APP_AUTHOR = "Drilo"
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 PROJECT_EXT = ".driloreview"
 PROJECT_EXTS = (PROJECT_EXT, ".drilonalisis")   # tambien los de cuando se llamaba DriloNalisis
 PROJECT_FILTER = "DriloReview project (%s)" % " ".join("*" + e for e in PROJECT_EXTS)
@@ -57,28 +57,14 @@ PAGE_ROLE = int(Qt.ItemDataRole.UserRole) + 1
 SHAPE_ROLE = int(Qt.ItemDataRole.UserRole) + 2
 
 
-def _writable(carpeta: Path) -> bool:
-    try:
-        prueba = carpeta / (".driloreview-%s" % uuid.uuid4().hex[:8])
-        prueba.write_bytes(b"")
-        prueba.unlink()
-        return True
-    except OSError:
-        return False
-
-
 def data_dir() -> Path:
-    """Donde van los ajustes y las imagenes pegadas.
-
-    En Windows, la version empaquetada es portable como DriloBoard: junto al
-    .exe si esa carpeta se puede escribir (un USB, por ejemplo). Si no, y en
-    macOS y Linux, la carpeta de datos del usuario. Ni registro ni plist.
+    """Donde van los ajustes y las imagenes pegadas: la carpeta de datos del
+    usuario de cada sistema, ni registro ni plist. (No junto al .exe: es un
+    solo archivo que se suele dejar en Descargas, y la llenaria.)
     Las pruebas lo apuntan a una carpeta temporal con DRILOREVIEW_DATA."""
     otra = os.environ.get("DRILOREVIEW_DATA")
     if otra:
         d = Path(otra)
-    elif WINDOWS and getattr(sys, "frozen", False) and _writable(Path(sys.executable).parent):
-        d = Path(sys.executable).parent
     elif WINDOWS:
         d = Path(os.environ.get("APPDATA") or Path.home()) / APP_NAME
     elif MAC:

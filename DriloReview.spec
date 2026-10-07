@@ -1,7 +1,8 @@
 # -*- mode: python ; coding: utf-8 -*-
 """Receta de empaquetado de DriloReview.
 
-Lo normal es no llamarla a mano sino con build.py, que hace todo:
+Sale un unico DriloReview.exe en Windows y DriloReview.app en macOS (que
+build.py mete en un .dmg). Lo normal es no llamarla a mano sino con build.py:
     Windows:  build_windows.bat     macOS:  ./build_macos.sh
 
 Solo usa QtCore, QtGui (donde esta QPdfWriter) y QtWidgets: el resto de Qt
@@ -91,28 +92,22 @@ a.datas = [d for d in a.datas if not sobra(d)]
 
 pyz = PYZ(a.pure)
 
-exe = EXE(
-    pyz,
-    a.scripts,
-    [],
-    exclude_binaries=True,
-    name="DriloReview",
-    debug=False,
-    bootloader_ignore_signals=False,
-    strip=False,
-    upx=False,
-    console=False,
-    disable_windowed_traceback=False,
-    argv_emulation=False,        # el Dock lo recoge la propia app (QFileOpenEvent)
-    target_arch=os.environ.get("DRILOREVIEW_ARCH") or None,
-    codesign_identity=None,
-    entitlements_file=None,
-    icon=ICONO,
-    version=VERSION_WIN,
-)
+COMUN = dict(name="DriloReview", debug=False, bootloader_ignore_signals=False, strip=False,
+             upx=False, console=False, disable_windowed_traceback=False,
+             codesign_identity=None, entitlements_file=None, icon=ICONO)
 
-coll = COLLECT(exe, a.binaries, a.datas, strip=False, upx=False, upx_exclude=[],
-               name="DriloReview")
+if MAC:
+    # macOS: una carpeta (la .app), que build.py mete en un .dmg
+    exe = EXE(pyz, a.scripts, [], exclude_binaries=True,
+              argv_emulation=False,      # el Dock lo recoge la propia app (QFileOpenEvent)
+              target_arch=os.environ.get("DRILOREVIEW_ARCH") or None, **COMUN)
+    coll = COLLECT(exe, a.binaries, a.datas, strip=False, upx=False, upx_exclude=[],
+                   name="DriloReview")
+else:
+    # Windows: un unico DriloReview.exe que lleva todo dentro; al abrirse se
+    # desempaqueta en una carpeta temporal (por eso tarda un poco mas)
+    exe = EXE(pyz, a.scripts, a.binaries, a.datas, [], runtime_tmpdir=None,
+              version=VERSION_WIN, **COMUN)
 
 if MAC:
     app = BUNDLE(

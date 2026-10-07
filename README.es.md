@@ -18,16 +18,16 @@ amplíes.
 Las dos versiones se descargan de la página de
 [*Releases*](https://github.com/Cokedrilo/DriloReview/releases/latest).
 
-**Windows (portable).** Descomprime `DriloReview-1.1.0-portable-win64.zip`
-donde quieras —disco, USB— y ejecuta `DriloReview.exe`. No instala nada ni
-escribe en el registro: los ajustes y las imágenes pegadas se guardan **en esa
-misma carpeta** (si no se puede escribir en ella, por ejemplo en *Archivos de
-programa*, van a `%APPDATA%\DriloReview`). La primera vez Windows puede avisar
-de que el editor es desconocido: *Más información* → *Ejecutar de todas formas*.
-Puedes arrastrar imágenes sobre el `.exe` para abrirlas.
+**Windows.** `DriloReview-1.2.0-windows.exe` es **un solo archivo**: sin zip y
+sin instalar nada. Se descarga y se abre con doble clic; tarda unos segundos
+en arrancar porque se desempaqueta cada vez. Puede ir en un USB y no escribe
+en el registro; los ajustes y las imágenes pegadas van a
+`%APPDATA%\DriloReview`. La primera vez Windows puede avisar de que el editor
+es desconocido: *Más información* → *Ejecutar de todas formas*. Puedes
+arrastrar imágenes sobre el `.exe` para abrirlas.
 
-**Mac.** Descomprime `DriloReview-1.1.0-macos.zip` (una sola app para Intel
-y Apple Silicon, macOS 13 o posterior). La primera vez macOS avisa de que no está
+**Mac.** Abre `DriloReview-1.2.0-macos.dmg` y arrastra DriloReview a
+Aplicaciones (una sola app para Intel y Apple Silicon, macOS 13 o posterior). La primera vez macOS avisa de que no está
 notarizada: clic derecho → *Abrir*, o en Terminal
 `xattr -dr com.apple.quarantine /ruta/a/DriloReview.app`. Puedes soltar
 imágenes o carpetas **sobre el icono del Dock**. Los ajustes van en
@@ -123,16 +123,16 @@ originales no cambian.
 
 **Empaquetar**: en cada sistema, el suyo.
 
-- Windows: doble clic en `build_windows.bat` → `dist\DriloReview\` y
-  `dist\DriloReview-<versión>-portable-win64.zip`.
+- Windows: doble clic en `build_windows.bat` →
+  `dist\DriloReview-<versión>-windows.exe`, un solo archivo.
 - Mac: `./build_macos.sh` → `dist/DriloReview.app` y
-  `dist/DriloReview-<versión>-macos.zip`.
+  `dist/DriloReview-<versión>-macos.dmg`.
 
 Los dos crean el entorno `.venv` si hace falta y llaman a `build.py`, que
 genera el icono (`.ico` o `.icns`) desde el propio código, empaqueta con
 `DriloReview.spec`, firma en Mac (ad hoc, o con tu certificado si pones
-`CODESIGN_IDENTITY`), arranca la app empaquetada con `--selftest` y hace el
-zip. PyInstaller no cruza sistemas: la versión de Windows se construye en
+`CODESIGN_IDENTITY`), arranca la app empaquetada con `--selftest` y deja el
+`.exe` o el `.dmg`. PyInstaller no cruza sistemas: la versión de Windows se construye en
 Windows.
 
 **Publicar una versión**: sube la versión en `VERSION` (y en los enlaces de
@@ -143,7 +143,7 @@ git tag v1.2.0 && git push origin main v1.2.0
 ```
 
 GitHub Actions (`.github/workflows/release.yml`) construye en Windows y en Mac,
-pasa las pruebas en los dos, y crea la *release* con los dos zips. La de Mac
+pasa las pruebas en los dos, y crea la *release* con el `.exe` y el `.dmg`. La de Mac
 sale universal (Intel y Apple Silicon) porque usa el Python de python.org.
 
 Solo necesita `PySide6-Essentials` (el PDF lo escribe `QPdfWriter`, de

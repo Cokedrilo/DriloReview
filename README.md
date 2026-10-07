@@ -1,7 +1,7 @@
 # DriloReview
 
-[![Download](https://img.shields.io/badge/Download-Windows%20portable-2ea44f?style=for-the-badge&logo=windows)](https://github.com/Cokedrilo/DriloReview/releases/latest/download/DriloReview-1.1.0-portable-win64.zip)
-[![Download](https://img.shields.io/badge/Download-macOS-2ea44f?style=for-the-badge&logo=apple)](https://github.com/Cokedrilo/DriloReview/releases/latest/download/DriloReview-1.1.0-macos.zip)
+[![Download](https://img.shields.io/badge/Download-Windows%20.exe-2ea44f?style=for-the-badge&logo=windows)](https://github.com/Cokedrilo/DriloReview/releases/latest/download/DriloReview-1.2.0-windows.exe)
+[![Download](https://img.shields.io/badge/Download-macOS%20.dmg-2ea44f?style=for-the-badge&logo=apple)](https://github.com/Cokedrilo/DriloReview/releases/latest/download/DriloReview-1.2.0-macos.dmg)
 [![Release](https://img.shields.io/github/v/release/Cokedrilo/DriloReview)](https://github.com/Cokedrilo/DriloReview/releases/latest)
 [![Licence](https://img.shields.io/github/license/Cokedrilo/DriloReview)](LICENSE)
 
@@ -14,17 +14,18 @@ the drawings as sharp vectors. Your image files are never modified.
 
 ### ⬇ Try it in one minute
 
-**[Download for Windows](https://github.com/Cokedrilo/DriloReview/releases/latest/download/DriloReview-1.1.0-portable-win64.zip)**
-→ unzip anywhere → run `DriloReview.exe`. Nothing is installed and nothing is
-written to the registry; it runs from a USB stick. Windows will warn about an
+**[Download for Windows](https://github.com/Cokedrilo/DriloReview/releases/latest/download/DriloReview-1.2.0-windows.exe)**
+— one single `.exe`: no zip, nothing to install. Download it and double-click
+(it takes a few seconds to start, as it unpacks itself). It also runs from a
+USB stick, and writes nothing to the registry. Windows will warn about an
 unknown publisher the first time (the executable is not signed): *More info* →
 *Run anyway*.
 
-**[Download for Mac](https://github.com/Cokedrilo/DriloReview/releases/latest/download/DriloReview-1.1.0-macos.zip)**
-→ unzip → open `DriloReview.app`. One app for Intel and Apple Silicon, macOS 13
-or later. The app is not notarised, so the first time macOS refuses to open it:
-right-click → *Open*, or run once in Terminal
-`xattr -dr com.apple.quarantine /path/to/DriloReview.app`.
+**[Download for Mac](https://github.com/Cokedrilo/DriloReview/releases/latest/download/DriloReview-1.2.0-macos.dmg)**
+— open the `.dmg` and drag DriloReview to Applications (or anywhere). One app
+for Intel and Apple Silicon, macOS 13 or later. The app is not notarised, so
+the first time macOS refuses to open it: right-click → *Open*, or run once in
+Terminal `xattr -dr com.apple.quarantine /Applications/DriloReview.app`.
 
 > Manual en español: [README.es.md](README.es.md)
 
@@ -73,10 +74,10 @@ Tests (they run without opening any window and never touch your settings):
 python tests/test_driloreview.py
 ```
 
-Building the portable packages: `build_windows.bat` on Windows,
-`./build_macos.sh` on a Mac. Both call `build.py`, which draws the icon from
-code, packages with PyInstaller, runs the packaged app with `--selftest` and
-zips the result. Pushing a `v*` tag makes GitHub Actions build, test and
+Building: `build_windows.bat` on Windows, `./build_macos.sh` on a Mac. Both
+call `build.py`, which draws the icon from code, packages with PyInstaller
+(one single `.exe` on Windows, a `.dmg` on the Mac) and runs the packaged app
+with `--selftest`. Pushing a `v*` tag makes GitHub Actions build, test and
 publish both versions.
 
 ## Licence
